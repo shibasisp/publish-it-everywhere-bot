@@ -214,7 +214,13 @@ func HandleMsgFromDebuggingChannel(event *model.WebSocketEvent) {
 		if post.UserId == botUser.Id {
 			return
 		}
-		// if you see any word matching 'alive' then respond
+
+		if msg, match := publishItEverywhere(post); match {
+			SendMsgToDebuggingChannel(msg, post.Id)
+			return
+		}
+
+		// if you see any word matching ':twitter_login' then respond
 		if matched, _ := regexp.MatchString(`:twitter_login`, post.Message); matched {
 			loginTwitter(post)
 			return
@@ -227,7 +233,7 @@ func HandleMsgFromDebuggingChannel(event *model.WebSocketEvent) {
 				SendMsgToDebuggingChannel("Failed to post the status on twitter", post.Id)
 			}
 			SendMsgToAnyChannel("Succesfully posted to twitter", post.Id, post.ChannelId)
-			SendMsgToDebuggingChannel("Succesfully posted to twitter", post.Id)
+			//SendMsgToDebuggingChannel("Succesfully posted to twitter", post.Id)
 			return
 		}
 	}
