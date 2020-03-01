@@ -92,9 +92,9 @@ One more use case would be, If in your company, you want  someone to post conten
 
 Video Link: https://vimeo.com/394777943
 
-```
-![Publish it everywhere bot](demo/demo.gif)
-```
+<p align="center">
+  <img src="https://github.com/shibasisp/publish-it-everywhere-bot/raw/master/demo/demo.gif" />
+</p>
 
 ## Usage
 
