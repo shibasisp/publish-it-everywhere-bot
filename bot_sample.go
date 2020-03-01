@@ -4,34 +4,13 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io/ioutil"
-	"net/http"
 	"os"
 	"os/signal"
-	"regexp"
 	"strings"
 
-	"github.com/mattermost/mattermost-bot-sample-golang/db"
-	"github.com/mattermost/mattermost-bot-sample-golang/types"
+	"github.com/mattermost/mattermost-bot-sample-golang/config"
 
 	"github.com/mattermost/mattermost-server/v5/model"
-)
-
-const (
-	SAMPLE_NAME = "Mattermost Bot Sample"
-
-	USER_EMAIL    = "bot@example.com"
-	USER_PASSWORD = "password1"
-	USER_NAME     = "samplebot"
-	USER_FIRST    = "Sample"
-	USER_LAST     = "Bot"
-
-	TEAM_NAME        = "botsample"
-	CHANNEL_LOG_NAME = "debugging-for-sample-bot"
 )
 
 var client *model.Client4
@@ -44,8 +23,7 @@ var debuggingChannel *model.Channel
 // Documentation for the Go driver can be found
 // at https://godoc.org/github.com/mattermost/platform/model#Client
 func main() {
-	db.Initialize()
-	println(SAMPLE_NAME)
+	println(config.SampleName)
 
 	SetupGracefulShutdown()
 
@@ -71,7 +49,7 @@ func main() {
 
 	// Lets create a bot channel for logging debug messages into
 	CreateBotDebuggingChannelIfNeeded()
-	SendMsgToDebuggingChannel("_"+SAMPLE_NAME+" has **started** running_", "")
+	SendMsgToDebuggingChannel("_"+config.SampleName+" has **started** running_", "")
 
 	// Lets start listening to some channels via the websocket!
 	webSocketClient, err := model.NewWebSocketClient4("ws://localhost:8065", client.AuthToken)
@@ -108,7 +86,7 @@ func MakeSureServerIsRunning() {
 
 // LoginAsTheBotUser ...
 func LoginAsTheBotUser() {
-	if user, resp := client.Login(USER_EMAIL, USER_PASSWORD); resp.Error != nil {
+	if user, resp := client.Login(config.UserEmail, config.UserPassword); resp.Error != nil {
 		println("There was a problem logging into the Mattermost server.  Are you sure ran the setup steps from the README.md?")
 		PrintError(resp.Error)
 		os.Exit(1)
@@ -117,11 +95,12 @@ func LoginAsTheBotUser() {
 	}
 }
 
+//UpdateTheBotUserIfNeeded ..
 func UpdateTheBotUserIfNeeded() {
-	if botUser.FirstName != USER_FIRST || botUser.LastName != USER_LAST || botUser.Username != USER_NAME {
-		botUser.FirstName = USER_FIRST
-		botUser.LastName = USER_LAST
-		botUser.Username = USER_NAME
+	if botUser.FirstName != config.UserFirstName || botUser.LastName != config.UserLastName || botUser.Username != config.Username {
+		botUser.FirstName = config.UserFirstName
+		botUser.LastName = config.UserLastName
+		botUser.Username = config.Username
 
 		if user, resp := client.UpdateUser(botUser); resp.Error != nil {
 			println("We failed to update the Sample Bot user")
@@ -134,10 +113,11 @@ func UpdateTheBotUserIfNeeded() {
 	}
 }
 
+//FindBotTeam ..
 func FindBotTeam() {
-	if team, resp := client.GetTeamByName(TEAM_NAME, ""); resp.Error != nil {
+	if team, resp := client.GetTeamByName(config.TeamName, ""); resp.Error != nil {
 		println("We failed to get the initial load")
-		println("or we do not appear to be a member of the team '" + TEAM_NAME + "'")
+		println("or we do not appear to be a member of the team '" + config.TeamName + "'")
 		PrintError(resp.Error)
 		os.Exit(1)
 	} else {
@@ -145,8 +125,9 @@ func FindBotTeam() {
 	}
 }
 
+//CreateBotDebuggingChannelIfNeeded ..
 func CreateBotDebuggingChannelIfNeeded() {
-	if rchannel, resp := client.GetChannelByName(CHANNEL_LOG_NAME, botTeam.Id, ""); resp.Error != nil {
+	if rchannel, resp := client.GetChannelByName(config.ChannelLogName, botTeam.Id, ""); resp.Error != nil {
 		println("We failed to get the channels")
 		PrintError(resp.Error)
 	} else {
@@ -156,38 +137,41 @@ func CreateBotDebuggingChannelIfNeeded() {
 
 	// Looks like we need to create the logging channel
 	channel := &model.Channel{}
-	channel.Name = CHANNEL_LOG_NAME
+	channel.Name = config.ChannelLogName
 	channel.DisplayName = "Debugging For Sample Bot"
 	channel.Purpose = "This is used as a test channel for logging bot debug messages"
 	channel.Type = model.CHANNEL_OPEN
 	channel.TeamId = botTeam.Id
 	if rchannel, resp := client.CreateChannel(channel); resp.Error != nil {
-		println("We failed to create the channel " + CHANNEL_LOG_NAME)
+		println("We failed to create the channel " + config.ChannelLogName)
 		PrintError(resp.Error)
 	} else {
 		debuggingChannel = rchannel
-		println("Looks like this might be the first run so we've created the channel " + CHANNEL_LOG_NAME)
+		println("Looks like this might be the first run so we've created the channel " + config.ChannelLogName)
 	}
 }
 
-func SendMsgToDebuggingChannel(msg string, replyToId string) {
+//SendMsgToDebuggingChannel ..
+func SendMsgToDebuggingChannel(msg string, replyToID string) {
 	post := &model.Post{}
 	post.ChannelId = debuggingChannel.Id
 	post.Message = msg
 
-	post.RootId = replyToId
+	post.RootId = replyToID
 
 	if _, resp := client.CreatePost(post); resp.Error != nil {
 		println("We failed to send a message to the logging channel")
 		PrintError(resp.Error)
 	}
 }
-func SendMsgToAnyChannel(msg string, replyToId string, channelID string) {
+
+// SendMsgToAnyChannel ..
+func SendMsgToAnyChannel(msg string, replyToID string, channelID string) {
 	post := &model.Post{}
 	post.ChannelId = channelID
 	post.Message = msg
 
-	post.RootId = replyToId
+	post.RootId = replyToID
 
 	if _, resp := client.CreatePost(post); resp.Error != nil {
 		println("We failed to send a message to the specified channel")
@@ -195,10 +179,12 @@ func SendMsgToAnyChannel(msg string, replyToId string, channelID string) {
 	}
 }
 
+//HandleWebSocketResponse ..
 func HandleWebSocketResponse(event *model.WebSocketEvent) {
 	HandleMsgFromDebuggingChannel(event)
 }
 
+//HandleMsgFromDebuggingChannel ..
 func HandleMsgFromDebuggingChannel(event *model.WebSocketEvent) {
 
 	// Lets only reponded to messaged posted events
@@ -216,73 +202,14 @@ func HandleMsgFromDebuggingChannel(event *model.WebSocketEvent) {
 		}
 
 		if msg, match := publishItEverywhere(post); match {
-			SendMsgToDebuggingChannel(msg, post.Id)
-			return
-		}
-
-		// if you see any word matching ':twitter_login' then respond
-		if matched, _ := regexp.MatchString(`:twitter_login`, post.Message); matched {
-			loginTwitter(post)
-			return
-		}
-
-		// if you see any word matching 'up' then respond
-		if strings.Split(post.Message, " ")[0] == ":post_to_twitter" {
-			posted, err := postToTwitter(post)
-			if err != nil || !posted {
-				SendMsgToDebuggingChannel("Failed to post the status on twitter", post.Id)
-			}
-			SendMsgToAnyChannel("Succesfully posted to twitter", post.Id, post.ChannelId)
-			//SendMsgToDebuggingChannel("Succesfully posted to twitter", post.Id)
+			SendMsgToAnyChannel(msg, post.Id, post.ChannelId)
 			return
 		}
 	}
 
 }
 
-func postToTwitter(post *model.Post) (bool, error) {
-	type postTwitter struct {
-		Message   string `json:"message"`
-		ChannelID string `json:"channel_id"`
-	}
-	var postRequest = postTwitter{
-		Message:   post.Message,
-		ChannelID: post.ChannelId,
-	}
-	rqst, err := json.Marshal(postRequest)
-	if err != nil {
-		return false, err
-	}
-
-	http.Post("https://webhook.site/95ee0cf3-7e43-41cf-9b05-aca161f6ecae", "application/json", bytes.NewBuffer(rqst))
-	resp, err := http.Post("http://localhost:8080/api/twitter/post-status", "application/json", bytes.NewBuffer(rqst))
-	if err != nil {
-		return false, err
-	}
-	if resp.StatusCode > 299 {
-		return false, errors.New("Couldn't post the status")
-	}
-	return true, nil
-}
-func loginTwitter(post *model.Post) {
-	resp, err := http.Get("http://localhost:8080/api/twitter/authurl?channel_id=" + post.ChannelId)
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
-	var response types.Response
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return
-	}
-	if err := json.Unmarshal(body, &response); err != nil {
-		return
-	}
-	SendMsgToAnyChannel(fmt.Sprintf("Twitter: %s", response.Data), post.Id, post.ChannelId)
-	return
-}
-
+// PrintError .
 func PrintError(err *model.AppError) {
 	println("\tError Details:")
 	println("\t\t" + err.Message)
@@ -290,6 +217,7 @@ func PrintError(err *model.AppError) {
 	println("\t\t" + err.DetailedError)
 }
 
+// SetupGracefulShutdown ..
 func SetupGracefulShutdown() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -299,7 +227,7 @@ func SetupGracefulShutdown() {
 				webSocketClient.Close()
 			}
 
-			SendMsgToDebuggingChannel("_"+SAMPLE_NAME+" has **stopped** running_", "")
+			SendMsgToDebuggingChannel("_"+config.SampleName+" has **stopped** running_", "")
 			os.Exit(0)
 		}
 	}()
