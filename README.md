@@ -49,6 +49,11 @@ One more use case would be, If in your company, you want  someone to post conten
    2. Create a file called `.env`. Copy the content from `.env.template` to `.env`
 
    3. Fill the actual credentials in the quotes(`DBNAME`, `DBURL`, `TWITTER_CONSUMER_KEY`, `TWITTER_CONSUMER_SECRET`,`LINKEDIN_CLIENT_ID`,`LINKEDIN_CLIENT_SECRET` and `SELF_URL`) to the `.env` file
+      
+      - `SELF_URL` is the domain name of the server.
+      - `DBNAME`, `DBURL` and `SELF_URL` are optional. Default values will be used if no value is specified.
+      - `TWITTER_CONSUMER_KEY`, `TWITTER_CONSUMER_SECRET`,`LINKEDIN_CLIENT_ID`,`LINKEDIN_CLIENT_SECRET` needs to be get from the Twitter app and LinkedIn app respectively. More details on how to create Twitter app and LinkedIn app can be found [here](https://developer.twitter.com/apps) and [here](https://docs.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow) respectively.
+      
 
    4. Export all the environment variables defined to the shell.
 
