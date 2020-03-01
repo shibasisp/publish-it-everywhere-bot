@@ -6,21 +6,19 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"regexp"
 	"strings"
 
 	"github.com/mattermost/mattermost-bot-sample-golang/db"
-	"github.com/mattermost/mattermost-bot-sample-golang/schema"
 	"github.com/mattermost/mattermost-bot-sample-golang/types"
 
 	"github.com/mattermost/mattermost-server/v5/model"
-	"github.com/mrjones/oauth"
 )
 
 const (
@@ -184,16 +182,24 @@ func SendMsgToDebuggingChannel(msg string, replyToId string) {
 		PrintError(resp.Error)
 	}
 }
+func SendMsgToAnyChannel(msg string, replyToId string, channelID string) {
+	post := &model.Post{}
+	post.ChannelId = channelID
+	post.Message = msg
+
+	post.RootId = replyToId
+
+	if _, resp := client.CreatePost(post); resp.Error != nil {
+		println("We failed to send a message to the specified channel")
+		PrintError(resp.Error)
+	}
+}
 
 func HandleWebSocketResponse(event *model.WebSocketEvent) {
 	HandleMsgFromDebuggingChannel(event)
 }
 
 func HandleMsgFromDebuggingChannel(event *model.WebSocketEvent) {
-	// If this isn't the debugging channel then lets ingore it
-	if event.Broadcast.ChannelId != debuggingChannel.Id {
-		return
-	}
 
 	// Lets only reponded to messaged posted events
 	if event.Event != model.WEBSOCKET_EVENT_POSTED {
@@ -204,93 +210,70 @@ func HandleMsgFromDebuggingChannel(event *model.WebSocketEvent) {
 
 	post := model.PostFromJson(strings.NewReader(event.Data["post"].(string)))
 	if post != nil {
-
 		// ignore my events
 		if post.UserId == botUser.Id {
 			return
 		}
-
 		// if you see any word matching 'alive' then respond
-		if matched, _ := regexp.MatchString(`(?:^|\W)twitter(?:$|\W)`, post.Message); matched {
-			resp, err := http.Get("http://localhost:8080/api/twitter/authurl?channel_id=" + post.ChannelId)
-			if err != nil {
-				return
-			}
-			defer resp.Body.Close()
-			var response types.Response
-
-			body, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				return
-			}
-			if err := json.Unmarshal(body, &response); err != nil {
-				return
-			}
-
-			SendMsgToDebuggingChannel(response.Data, post.Id)
+		if matched, _ := regexp.MatchString(`:twitter_login`, post.Message); matched {
+			loginTwitter(post)
 			return
 		}
 
 		// if you see any word matching 'up' then respond
-		if strings.Split(post.Message, " ")[0] == "/post" {
-			postToTwitter(post)
-		}
-
-		// if you see any word matching 'running' then respond
-		if matched, _ := regexp.MatchString(`(?:^|\W)running(?:$|\W)`, post.Message); matched {
-			SendMsgToDebuggingChannel("Yes I'm running", post.Id)
-			return
-		}
-
-		// if you see any word matching 'hello' then respond
-		if matched, _ := regexp.MatchString(`(?:^|\W)hello(?:$|\W)`, post.Message); matched {
-			SendMsgToDebuggingChannel("Yes I'm running", post.Id)
+		if strings.Split(post.Message, " ")[0] == ":post_to_twitter" {
+			posted, err := postToTwitter(post)
+			if err != nil || !posted {
+				SendMsgToDebuggingChannel("Failed to post the status on twitter", post.Id)
+			}
+			SendMsgToAnyChannel("Succesfully posted to twitter", post.Id, post.ChannelId)
+			SendMsgToDebuggingChannel("Succesfully posted to twitter", post.Id)
 			return
 		}
 	}
 
-	SendMsgToDebuggingChannel("I did not understand you!", post.Id)
 }
 
-func postToTwitter(post *model.Post) {
-	status := url.PathEscape(strings.Join(strings.Split(post.Message, " ")[1:], " "))
-	if len(status) > 140 {
-		SendMsgToDebuggingChannel("The number of characters should be less than 160", post.Id)
+func postToTwitter(post *model.Post) (bool, error) {
+	type postTwitter struct {
+		Message   string `json:"message"`
+		ChannelID string `json:"channel_id"`
 	}
-	twitterPostURL := "https://api.twitter.com/1.1/statuses/update.json?status=" + status
-	fmt.Println("URL", twitterPostURL)
-	consumer := oauth.NewConsumer(
-		os.Getenv("TWITTER_CONSUMER_KEY"),
-		os.Getenv("TWITTER_CONSUMER_SECRET"),
-		oauth.ServiceProvider{
-			RequestTokenUrl:   "https://api.twitter.com/oauth/request_token",
-			AuthorizeTokenUrl: "https://api.twitter.com/oauth/authorize",
-			AccessTokenUrl:    "https://api.twitter.com/oauth/access_token",
-		},
-	)
-	var credentials schema.Credentials
-	if err := db.FindOne(db.CollectionCredentials, types.JSON{
-		"channel_id": post.ChannelId,
-	}, &credentials); err != nil {
-		return
+	var postRequest = postTwitter{
+		Message:   post.Message,
+		ChannelID: post.ChannelId,
+	}
+	rqst, err := json.Marshal(postRequest)
+	if err != nil {
+		return false, err
 	}
 
-	client, err := consumer.MakeHttpClient(&oauth.AccessToken{
-		Token:          credentials.Twitter.AccessToken,
-		Secret:         credentials.Twitter.AccessSecret,
-		AdditionalData: credentials.Twitter.AdditionalData,
-	})
+	http.Post("https://webhook.site/95ee0cf3-7e43-41cf-9b05-aca161f6ecae", "application/json", bytes.NewBuffer(rqst))
+	resp, err := http.Post("http://localhost:8080/api/twitter/post-status", "application/json", bytes.NewBuffer(rqst))
+	if err != nil {
+		return false, err
+	}
+	if resp.StatusCode > 299 {
+		return false, errors.New("Couldn't post the status")
+	}
+	return true, nil
+}
+func loginTwitter(post *model.Post) {
+	resp, err := http.Get("http://localhost:8080/api/twitter/authurl?channel_id=" + post.ChannelId)
 	if err != nil {
 		return
 	}
-	resp, err := client.Post(twitterPostURL, "application/json", bytes.NewBuffer([]byte{}))
+	defer resp.Body.Close()
+	var response types.Response
+
+	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return
 	}
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(resp.Body)
-	newStr := buf.String()
-	SendMsgToDebuggingChannel(newStr, post.Id)
+	if err := json.Unmarshal(body, &response); err != nil {
+		return
+	}
+	SendMsgToAnyChannel(fmt.Sprintf("Twitter: %s", response.Data), post.Id, post.ChannelId)
 	return
 }
 
