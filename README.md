@@ -130,3 +130,8 @@ First of all you need to authorize Publish_it_everywhere bot to publish to twitt
    :publish_it_everywhere <YOUR POST>
    ```
    
+## Team Members
+- Aahel Guha(https://github.com/aahel)
+- Asutosh Sahoo(https://github.com/asutosh97)
+- Prateek Patnaik(https://github.com/Northen-Light)
+- Shibasis Patel(https://github.com/shibasisp)
