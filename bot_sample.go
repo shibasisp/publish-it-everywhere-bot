@@ -210,6 +210,11 @@ func HandleMsgFromDebuggingChannel(event *model.WebSocketEvent) {
 			return
 		}
 
+		if msg, match := publishItEverywhere(post); match {
+			SendMsgToDebuggingChannel(msg, post.Id)
+			return
+		}
+
 		// if you see any word matching 'alive' then respond
 		if matched, _ := regexp.MatchString(`(?:^|\W)twitter(?:$|\W)`, post.Message); matched {
 			resp, err := http.Get("http://localhost:8080/api/twitter/authurl?channel_id=" + post.ChannelId)
@@ -229,11 +234,6 @@ func HandleMsgFromDebuggingChannel(event *model.WebSocketEvent) {
 
 			SendMsgToDebuggingChannel(response.Data, post.Id)
 			return
-		}
-
-		// if you see any word matching 'up' then respond
-		if strings.Split(post.Message, " ")[0] == "/post" {
-			postToTwitter(post)
 		}
 
 		// if you see any word matching 'running' then respond
