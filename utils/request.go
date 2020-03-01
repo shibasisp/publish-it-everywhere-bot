@@ -3,14 +3,13 @@ package utils
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"net/http"
-
-	"github.com/mattermost/mattermost-bot-sample-golang/types"
 )
 
 // PostJSON performs http post request
-func PostJSON(client *http.Client, url string, requestBody types.JSON, response interface{}) error {
+func PostJSON(client *http.Client, url string, requestBody interface{}, response interface{}) error {
 
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
@@ -22,6 +21,9 @@ func PostJSON(client *http.Client, url string, requestBody types.JSON, response 
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode > 299 {
+		return errors.New("Couldn't post the status")
+	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
